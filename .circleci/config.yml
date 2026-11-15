@@ -1,0 +1,95 @@
+version: 2.1
+
+executors:
+  nodo:
+    docker:
+      - image: cimg/node:20.18
+    working_directory: ~/streetzone
+
+jobs:
+
+  validar-y-probar:
+    executor: nodo
+    steps:
+      - checkout
+      - run:
+          name: Versiones
+          command: node --version && npm --version
+      - run:
+          name: Validar el proyecto
+          command: npm run validate
+      - run:
+          name: Pruebas automáticas
+          command: npm run test:junit
+      - store_test_results:
+          path: test-results.xml
+
+  build:
+    executor: nodo
+    steps:
+      - checkout
+      - run:
+          name: Generar dist/
+          command: npm run build
+      - run:
+          name: Mostrar versión generada
+          command: cat dist/version.json
+      - store_artifacts:
+          path: dist
+      - persist_to_workspace:
+          root: .
+          paths:
+            - dist
+
+  desplegar-staging:
+    executor: nodo
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Publicar en Staging (Netlify)
+          command: node scripts/deploy.js staging --target=netlify
+      - run:
+          name: Prueba de humo en Staging
+          command: |
+            BUILD=$(node -p "require('./dist/version.json').build")
+            node scripts/smoke.js "$(cat deploy-staging.url)" "$BUILD"
+
+  desplegar-produccion:
+    executor: nodo
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Publicar en Producción (Netlify)
+          command: node scripts/deploy.js prod --target=netlify
+      - run:
+          name: Prueba de humo en Producción
+          command: |
+            BUILD=$(node -p "require('./dist/version.json').build")
+            node scripts/smoke.js "$(cat deploy-prod.url)" "$BUILD"
+
+workflows:
+  entrega-continua:
+    jobs:
+      - validar-y-probar
+      - build:
+          requires: [validar-y-probar]
+      - desplegar-staging:
+          requires: [build]
+          filters:
+            branches:
+              only: main
+      - aprobacion:
+          type: approval
+          requires: [desplegar-staging]
+          filters:
+            branches:
+              only: main
+      - desplegar-produccion:
+          requires: [aprobacion]
+          filters:
+            branches:
+              only: main

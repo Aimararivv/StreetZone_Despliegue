@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<rect width="512" height="512" fill="#f3efe6"/>
+<rect x="96" y="96" width="320" height="320" fill="#111" transform="rotate(-4 256 256)"/>
+<rect x="116" y="116" width="320" height="320" fill="#ff4f1a" transform="rotate(-4 256 256)" opacity="0"/>
+<text x="256" y="320" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-size="190" fill="#ffe14d" transform="rotate(-4 256 256)">SZ</text>
+</svg>
