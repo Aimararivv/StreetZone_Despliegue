@@ -10,11 +10,30 @@ function extraerUrl(salida, entorno) {
 
     const datos = JSON.parse(salida.slice(i, salida.lastIndexOf("}") + 1));
     const url = entorno === "prod"
-        ? datos.url || datos.deploy_url
+        ? datos.url
         : datos.deploy_url || datos.url;
 
+    if (!url && entorno === "prod" && datos.deploy_url) {
+        throw new Error("Netlify no devolvió la URL de producción (URL del sitio): el despliegue no se publicó como producción:\n" + salida);
+    }
     if (!url) throw new Error("La respuesta de Netlify no incluye URL:\n" + salida);
     return url;
+}
+
+function construirArgs(entorno, mensaje) {
+    const args = ["--yes", CLI, "deploy", "--dir=dist", "--json", `--message=${mensaje}`];
+    args.push(entorno === "prod" ? "--prod" : "--alias=staging");
+    return args;
+}
+
+function ejecutarNpx(args) {
+    const opciones = { encoding: "utf8", env: process.env, maxBuffer: 20 * 1024 * 1024 };
+
+    if (process.platform === "win32") {
+        const citados = args.map(a => `"${a.replace(/"/g, "")}"`);
+        return spawnSync("npx", citados, { ...opciones, shell: true });
+    }
+    return spawnSync("npx", args, { ...opciones, shell: false });
 }
 
 function desplegarNetlify(entorno, mensaje) {
@@ -22,10 +41,7 @@ function desplegarNetlify(entorno, mensaje) {
         if (!process.env[v]) throw new Error(`Falta la variable de entorno ${v}`);
     });
 
-    const args = ["--yes", CLI, "deploy", "--dir=dist", "--json", `--message=${mensaje}`];
-    args.push(entorno === "prod" ? "--prod" : "--alias=staging");
-
-    const r = spawnSync("npx", args, { encoding: "utf8", shell: true, env: process.env, maxBuffer: 20 * 1024 * 1024 });
+    const r = ejecutarNpx(construirArgs(entorno, mensaje));
 
     if (r.status !== 0) throw new Error(`netlify deploy falló (código ${r.status}):\n${r.stdout}\n${r.stderr}`);
     return extraerUrl(r.stdout, entorno);
@@ -70,4 +86,4 @@ if (require.main === module) {
     try { main(); } catch (e) { console.error("✖ " + e.message); process.exit(1); }
 }
 
-module.exports = { extraerUrl };
+module.exports = { extraerUrl, construirArgs };
