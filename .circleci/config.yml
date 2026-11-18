@@ -1,5 +1,4 @@
 version: 2.1
-
 executors:
   nodo:
     docker:
@@ -8,86 +7,115 @@ executors:
 
 jobs:
 
+  # Trabajo encargado de validar el proyecto y ejecutar las pruebas
   validar-y-probar:
     executor: nodo
     steps:
       - checkout
+
       - run:
           name: Versiones
           command: node --version && npm --version
+
       - run:
           name: Validar el proyecto
           command: npm run validate
+
+      # Ejecuta las pruebas automáticas del proyecto
       - run:
           name: Pruebas automáticas
           command: npm run test:junit
+
       - store_test_results:
           path: test-results.xml
 
+  # Trabajo encargado de construir el proyecto
   build:
     executor: nodo
     steps:
       - checkout
+
       - run:
           name: Generar dist/
           command: npm run build
+
       - run:
           name: Mostrar versión generada
           command: cat dist/version.json
+
       - store_artifacts:
           path: dist
+
       - persist_to_workspace:
           root: .
           paths:
             - dist
 
+  # Publicar en el entorno de pruebas
   desplegar-staging:
     executor: nodo
     steps:
       - checkout
+
       - attach_workspace:
           at: .
+
+      # Publica la aplicación en Netlify utilizando el entorno Staging
       - run:
           name: Publicar en Staging (Netlify)
           command: node scripts/deploy.js staging --target=netlify
+
       - run:
           name: Prueba de humo en Staging
           command: |
+            # Obtiene el identificador de la versión construida
             BUILD=$(node -p "require('./dist/version.json').build")
+            # Ejecuta la prueba de humo utilizando la URL y la versión esperada
             node scripts/smoke.js "$(cat deploy-staging.url)" "$BUILD"
 
+  # Trabajo encargado de publicar la aplicación en el entorno de producción
   desplegar-produccion:
     executor: nodo
     steps:
       - checkout
+
       - attach_workspace:
           at: .
+
       - run:
           name: Publicar en Producción (Netlify)
           command: node scripts/deploy.js prod --target=netlify
+
       - run:
           name: Prueba de humo en Producción
           command: |
+            # Obtiene el identificador de la versión construida
             BUILD=$(node -p "require('./dist/version.json').build")
+            # Verifica la URL de producción y la versión publicada
             node scripts/smoke.js "$(cat deploy-prod.url)" "$BUILD"
 
+# Definición del flujo de trabajo y el orden de ejecución de los trabajos
 workflows:
   entrega-continua:
     jobs:
       - validar-y-probar
+
       - build:
           requires: [validar-y-probar]
+
       - desplegar-staging:
           requires: [build]
           filters:
             branches:
               only: main
+
       - aprobacion:
           type: approval
           requires: [desplegar-staging]
           filters:
             branches:
               only: main
+
       - desplegar-produccion:
           requires: [aprobacion]
           filters:
